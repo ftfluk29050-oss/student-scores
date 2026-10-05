@@ -111,7 +111,7 @@
 
     var html = '<div class="toolbar"><label class="sr" for="pick">วิชา</label><select id="pick">' +
       db.subjects.map(function (x) { return '<option value="' + x.id + '"' + (x.id === s.id ? ' selected' : '') + '>' + h(subjName(x)) + '</option>'; }).join('') +
-      '</select><button id="edit-subject" class="plain">แก้ไขวิชา</button><span class="grow"></span>' +
+      '</select><button id="edit-subject" class="plain">แก้ไขวิชา</button><button id="new-subject">+ เพิ่มวิชา</button><span class="grow"></span>' +
       '<button id="add-item" class="primary">เพิ่มช่องคะแนน</button>' +
       (cls ? '<button id="export">ส่งออกเป็น Excel</button>' : '') + '</div>';
 
@@ -204,6 +204,7 @@
   function bindScoreToolbar(s, cls) {
     document.getElementById('pick').onchange = function () { go('#/scores/' + this.value); };
     document.getElementById('edit-subject').onclick = function () { subjectDialog(s); };
+    document.getElementById('new-subject').onclick = function () { subjectDialog(null); };
     document.getElementById('add-item').onclick = function () { itemDialog(s, null); };
     var ex = document.getElementById('export'); if (ex) ex.onclick = function () { exportCsv(s, cls); };
     app.querySelectorAll('[data-item]').forEach(function (b) {
