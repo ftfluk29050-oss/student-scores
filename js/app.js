@@ -23,24 +23,76 @@
 
   // ---------- ข้อมูล ----------
   function blank() { return { subjects: [], scores: {}, notes: {}, lastBackup: null }; }
-  function load() {
+  function loadLocal() {
     try {
       var d = JSON.parse(localStorage.getItem(KEY));
       if (d && Array.isArray(d.subjects)) { d.scores = d.scores || {}; d.notes = d.notes || {}; return d; }
     } catch (e) { /* ใช้ข้อมูลว่าง */ }
     return blank();
   }
-  var db = load();
+  // ถ้าตั้งค่า Firebase ไว้ (js/firebase-config.js) จะต้องล็อกอิน และข้อมูลเก็บบนคลาวด์ในบัญชีของผู้ใช้
+  // ถ้าไม่ได้ตั้งค่า ข้อมูลเก็บในเบราว์เซอร์ของเครื่องนี้
+  var CONFIG = window.FIREBASE_CONFIG || null;
+  var db = CONFIG ? blank() : loadLocal();
   var storageOk = true;
-  function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(db)); storageOk = true; }
-    catch (e) { storageOk = false; }
+  var cloud = null, cloudUser = null, cloudReady = false, cloudErr = '';
+  var mainDirty = false, mainTimer = 0, lastMain = '', patchQ = {}, patchTimer = 0, pending = 0, localPhotos = {};
+
+  function status() {
     var el = document.getElementById('saved');
     var t = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    el.style.color = '';
+    if (CONFIG) {
+      if (!cloudUser) el.textContent = '';
+      else if (cloudErr) { el.textContent = 'ซิงก์ขึ้นคลาวด์ไม่สำเร็จ (' + cloudErr + ') ให้สำรองข้อมูลเป็นไฟล์ไว้ก่อน'; el.style.color = 'var(--red)'; }
+      else if (pending > 0 || mainDirty || Object.keys(patchQ).length) el.textContent = navigator.onLine ? 'กำลังซิงก์ขึ้นคลาวด์' : 'ออฟไลน์อยู่ ข้อมูลจะซิงก์เมื่อมีอินเทอร์เน็ต';
+      else el.textContent = 'ซิงก์ขึ้นคลาวด์แล้ว เวลา ' + t + ' น.';
+      return;
+    }
     el.textContent = storageOk
       ? 'บันทึกในเครื่องนี้แล้ว เวลา ' + t + ' น.'
       : 'บันทึกไม่ได้ เบราว์เซอร์ปิดการเก็บข้อมูลไว้ ให้สำรองข้อมูลเป็นไฟล์ก่อนปิดหน้านี้';
-    el.style.color = storageOk ? '' : 'var(--red)';
+    if (!storageOk) el.style.color = 'var(--red)';
+  }
+  function save() {
+    if (CONFIG) {
+      if (cloudUser && JSON.stringify(mainObj()) !== lastMain) { mainDirty = true; clearTimeout(mainTimer); mainTimer = setTimeout(flushMain, 700); }
+      status(); return;
+    }
+    try { localStorage.setItem(KEY, JSON.stringify(db)); storageOk = true; }
+    catch (e) { storageOk = false; }
+    status();
+  }
+
+  // ---------- ส่งข้อมูลขึ้นคลาวด์ ----------
+  function mainObj() { return { subjects: db.subjects, notes: db.notes, lastBackup: db.lastBackup || null }; }
+  function track(p) {
+    pending++; status();
+    p.then(function () { pending--; cloudErr = ''; status(); }, function (e) { pending--; cloudErr = (e && e.code) || 'error'; status(); });
+  }
+  function flushMain() {
+    clearTimeout(mainTimer);
+    if (!mainDirty || !cloudUser) return;
+    mainDirty = false; lastMain = JSON.stringify(mainObj());
+    track(cloud.putMain(JSON.parse(lastMain)));
+  }
+  function flushPatches() {
+    clearTimeout(patchTimer);
+    var q = patchQ; patchQ = {};
+    if (cloudUser) Object.keys(q).forEach(function (sid) { track(cloud.patchScores(sid, q[sid])); });
+  }
+  // เขียนทับคะแนนทั้งวิชา (ใช้เมื่อลบช่องคะแนน หรือกู้คืนข้อมูล)
+  function cloudPutScores(sid) { if (!cloudUser) return; delete patchQ[sid]; track(cloud.putScores(sid, JSON.parse(JSON.stringify(db.scores[sid] || {})))); }
+  function cloudDelScores(sid) { if (!cloudUser) return; delete patchQ[sid]; track(cloud.delScores(sid)); }
+  // แทนที่ข้อมูลบนคลาวด์ทั้งหมดด้วยข้อมูลในหน่วยความจำตอนนี้
+  function cloudReplaceAll(prevSids, prevCodes) {
+    if (!cloudUser) return;
+    patchQ = {}; mainDirty = true; flushMain();
+    var keep = {};
+    db.subjects.forEach(function (s) { keep[s.id] = 1; cloudPutScores(s.id); });
+    prevSids.forEach(function (sid) { if (!keep[sid]) { keep[sid] = 1; cloudDelScores(sid); } });
+    prevCodes.forEach(function (c) { if (!photos[c]) track(cloud.delPhoto(c)); });
+    Object.keys(photos).forEach(function (c) { track(cloud.putPhoto(c, photos[c])); });
   }
 
   // ---------- รูปนักเรียน (เก็บใน IndexedDB ของเบราว์เซอร์ เพราะรูปใหญ่เกินที่ localStorage รับได้) ----------
@@ -57,11 +109,22 @@
       cur.onerror = function () { done(); };
     };
   }
-  function photoSet(code, dataUrl) { photos[code] = dataUrl; if (idb) photoStore('readwrite').put(dataUrl, code); }
-  function photoDel(code) { delete photos[code]; if (idb) photoStore('readwrite').delete(code); }
+  function photoSet(code, dataUrl) {
+    photos[code] = dataUrl;
+    if (cloudUser) track(cloud.putPhoto(code, dataUrl)); else if (!CONFIG && idb) photoStore('readwrite').put(dataUrl, code);
+  }
+  function photoDel(code) {
+    delete photos[code];
+    if (cloudUser) track(cloud.delPhoto(code)); else if (!CONFIG && idb) photoStore('readwrite').delete(code);
+  }
+  // แทนที่รูปทั้งหมดในหน่วยความจำ (และในเครื่อง ถ้าเป็นโหมดเก็บในเครื่อง) ส่วนบนคลาวด์ให้ cloudReplaceAll จัดการ
   function photosReplace(all) {
-    photos = {}; if (idb) photoStore('readwrite').clear();
-    Object.keys(all || {}).forEach(function (code) { if (/^data:image\//.test(all[code])) photoSet(code, all[code]); });
+    var local = !CONFIG && idb;
+    photos = {}; if (local) photoStore('readwrite').clear();
+    Object.keys(all || {}).forEach(function (code) {
+      if (!/^data:image\//.test(all[code])) return;
+      photos[code] = all[code]; if (local) photoStore('readwrite').put(all[code], code);
+    });
   }
   // ย่อและครอบรูปเป็นสัดส่วน 3:4 (300x400) ก่อนเก็บ เพื่อให้ไฟล์เล็ก
   function photoFromFile(file, ok, fail) {
@@ -83,9 +146,16 @@
   function subj(id) { return db.subjects.filter(function (s) { return s.id === id; })[0]; }
   function subjName(s) { return (s.code ? s.code + ' ' : '') + s.name; }
   function getScore(sid, code, iid) { var a = db.scores[sid]; a = a && a[code]; var v = a && a[iid]; return typeof v === 'number' ? v : null; }
-  function setScore(sid, code, iid, v) {
+  function putLocal(sid, code, iid, v) {
     var a = db.scores[sid] = db.scores[sid] || {}; var b = a[code] = a[code] || {};
     if (v === null) delete b[iid]; else b[iid] = v;
+  }
+  function setScore(sid, code, iid, v) {
+    putLocal(sid, code, iid, v);
+    if (cloudUser) {
+      var q = patchQ[sid] = patchQ[sid] || {}; (q[code] = q[code] || {})[iid] = v;
+      clearTimeout(patchTimer); patchTimer = setTimeout(flushPatches, 600);
+    }
   }
   function gradeOf(pct) { for (var i = 0; i < GRADES.length; i++) if (pct >= GRADES[i][0]) return GRADES[i][1]; return '0'; }
 
@@ -116,7 +186,8 @@
 
   // ---------- เส้นทางหน้า ----------
   function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
-  function route() {
+  function route(keepScroll) {
+    if (CONFIG && !(cloudUser && cloudReady)) { if (cloud && !cloudUser) viewLogin(); return; }
     var p = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
     var page = p[0] || 'scores';
     document.querySelectorAll('[data-nav]').forEach(function (a) {
@@ -127,7 +198,7 @@
     else if (page === 'student') viewStudent(p[1]);
     else if (page === 'settings') viewSettings();
     else viewScores(p[1], p[2]);
-    window.scrollTo(0, 0);
+    if (keepScroll !== true) window.scrollTo(0, 0);
   }
 
   // ---------- หน้ากรอกคะแนน ----------
@@ -342,6 +413,8 @@
     };
   }
 
+  function prevIds() { return { sids: Object.keys(db.scores).concat(db.subjects.map(function (s) { return s.id; })), codes: Object.keys(photos) }; }
+
   // ---------- หน้าวิชาและข้อมูล ----------
   function viewSettings() {
     var nScores = 0;
@@ -353,17 +426,31 @@
         (s.classIds.map(function (id) { return classById[id].name; }).join(', ') || 'ยังไม่ได้เลือกห้อง') + ' มี ' + s.items.length + ' ช่องคะแนน</span></span>' +
         '<span class="row"><a class="btn" href="#/scores/' + s.id + '">กรอกคะแนน</a><button data-edit="' + s.id + '">แก้ไขวิชา</button></span></li>';
     }).join('') + '</ul>' : '<p class="muted">ยังไม่มีวิชา</p>';
-    html += '</div><div class="panel"><h2>สำรองและกู้คืนข้อมูล</h2>' +
-      '<p>คะแนน รูปนักเรียน และบันทึกของครู เก็บอยู่ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ถ้าล้างข้อมูลเบราว์เซอร์หรือเปลี่ยนเครื่อง ข้อมูลจะไม่ตามไปด้วย ควรสำรองเป็นไฟล์ทุกครั้งหลังกรอกคะแนน ไฟล์สำรองมีรูปนักเรียนรวมอยู่ด้วย</p>' +
+    html += '</div>';
+    if (cloudUser) html += '<div class="panel"><h2>บัญชี</h2><p>เข้าสู่ระบบด้วย <b>' + h(cloudUser.email) + '</b> คะแนน รูปนักเรียน และบันทึกของครูเก็บบนคลาวด์ในบัญชีนี้ เปิดจากเครื่องไหนก็เห็นข้อมูลเดียวกัน</p>' +
+      '<div class="row"><button id="logout">ออกจากระบบ</button></div></div>';
+    else html += '<div class="panel"><h2>ล็อกอินและซิงก์ข้ามเครื่อง</h2><p>ยังไม่ได้เปิดใช้ ตอนนี้ข้อมูลเก็บในเครื่องนี้เครื่องเดียวและไม่ต้องล็อกอิน เปิดใช้ได้โดยสร้างโปรเจกต์ Firebase แล้วใส่ค่าในไฟล์ <code>js/firebase-config.js</code> ตามขั้นตอนใน README</p></div>';
+    html += '<div class="panel"><h2>ติดตั้งเป็นแอป</h2>' + (standalone()
+      ? '<p>กำลังใช้งานแบบแอปอยู่แล้ว</p>'
+      : '<p>ติดตั้งแล้วจะมีไอคอนบนหน้าจอ เปิดได้เต็มจอเหมือนแอป และเปิดได้แม้ไม่มีอินเทอร์เน็ต</p>' +
+        '<div class="row"><button class="primary" id="install"' + (installEvt ? '' : ' hidden') + '>ติดตั้งแอป</button></div>' +
+        '<p class="muted"' + (installEvt ? ' hidden' : '') + ' id="install-how">Android (Chrome): เมนู ⋮ แล้วเลือก “ติดตั้งแอป” หรือ “เพิ่มลงในหน้าจอหลัก”<br>iPhone/iPad (Safari): ปุ่มแชร์ แล้วเลือก “เพิ่มไปยังหน้าจอโฮม”<br>คอมพิวเตอร์ (Chrome/Edge): ไอคอนติดตั้งที่ขวาสุดของช่องที่อยู่เว็บ</p>') + '</div>';
+    html += '<div class="panel"><h2>สำรองและกู้คืนข้อมูล</h2>' +
+      (cloudUser ? '<p>ข้อมูลซิงก์ขึ้นคลาวด์ให้อัตโนมัติ ไฟล์สำรองเป็นสำเนาเผื่อไว้อีกชั้น ควรสำรองเมื่อจบแต่ละช่วงการวัดผล ไฟล์สำรองมีรูปนักเรียนรวมอยู่ด้วย</p>'
+        : '<p>คะแนน รูปนักเรียน และบันทึกของครู เก็บอยู่ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ถ้าล้างข้อมูลเบราว์เซอร์หรือเปลี่ยนเครื่อง ข้อมูลจะไม่ตามไปด้วย ควรสำรองเป็นไฟล์ทุกครั้งหลังกรอกคะแนน ไฟล์สำรองมีรูปนักเรียนรวมอยู่ด้วย</p>') +
       '<p class="muted">ตอนนี้มีคะแนน ' + nScores + ' ช่อง รูปนักเรียน ' + Object.keys(photos).length + ' คน สำรองล่าสุด ' + (db.lastBackup ? new Date(db.lastBackup).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : 'ยังไม่เคยสำรอง') + '</p>' +
       '<div class="row"><button class="primary" id="backup">สำรองข้อมูลเป็นไฟล์</button><button id="restore">กู้คืนจากไฟล์สำรอง</button>' +
-      '<input type="file" id="file" accept=".json,application/json" hidden><button class="danger" id="wipe">ลบข้อมูลทั้งหมดในเครื่องนี้</button></div><p class="err" id="msg" hidden></p></div>' +
+      '<input type="file" id="file" accept=".json,application/json" hidden><button class="danger" id="wipe">' + (cloudUser ? 'ลบข้อมูลทั้งหมดในบัญชีนี้' : 'ลบข้อมูลทั้งหมดในเครื่องนี้') + '</button></div><p class="err" id="msg" hidden></p></div>' +
       '<div class="panel"><h2>เกณฑ์ตัดเกรด</h2><p>คิดจากร้อยละของคะแนนรวมทุกช่อง เกรดจะแสดงเมื่อกรอกคะแนนครบทุกช่องแล้ว</p><table class="plain"><tr><th>ร้อยละตั้งแต่</th>' +
       GRADES.map(function (g) { return '<td class="num">' + g[0] + '</td>'; }).join('') + '</tr><tr><th>เกรด</th>' +
       GRADES.map(function (g) { return '<td class="num"><b>' + g[1] + '</b></td>'; }).join('') + '</tr></table></div>';
     app.innerHTML = html;
 
     document.getElementById('add-subject').onclick = function () { subjectDialog(null); };
+    var lo = document.getElementById('logout');
+    if (lo) lo.onclick = function () { flushMain(); flushPatches(); cloud.signOut(); };
+    var ins = document.getElementById('install');
+    if (ins) ins.onclick = function () { if (!installEvt) return; installEvt.prompt(); installEvt = null; ins.hidden = true; };
     app.querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { subjectDialog(subj(b.dataset.edit)); }; });
     document.getElementById('backup').onclick = function () {
       db.lastBackup = Date.now(); save();
@@ -379,15 +466,16 @@
         try {
           var d = JSON.parse(rd.result);
           if (!d || !Array.isArray(d.subjects) || typeof d.scores !== 'object') throw 0;
-          if (!confirm('แทนที่ข้อมูลในเครื่องนี้ด้วยข้อมูลจากไฟล์ “' + f.name + '” ใช่ไหม')) return;
+          if (!confirm('แทนที่ข้อมูล' + (cloudUser ? 'ในบัญชีนี้' : 'ในเครื่องนี้') + 'ด้วยข้อมูลจากไฟล์ “' + f.name + '” ใช่ไหม')) return;
+          var prev = prevIds();
           photosReplace(d.photos); delete d.photos;
-          d.notes = d.notes || {}; db = d; save(); viewSettings();
+          d.scores = d.scores || {}; d.notes = d.notes || {}; db = d; cloudReplaceAll(prev.sids, prev.codes); save(); viewSettings();
         } catch (e) { msg.hidden = false; msg.textContent = 'ไฟล์นี้ไม่ใช่ไฟล์สำรองของสมุดคะแนน เลือกไฟล์ .json ที่ได้จากปุ่ม “สำรองข้อมูลเป็นไฟล์”'; }
       };
       rd.readAsText(f);
     };
     document.getElementById('wipe').onclick = function () {
-      if (confirm('ลบวิชา คะแนน รูปนักเรียน และบันทึกของครูทั้งหมดในเครื่องนี้ กู้คืนได้จากไฟล์สำรองเท่านั้น ลบเลยไหม')) { db = blank(); photosReplace({}); save(); viewSettings(); }
+      if (confirm('ลบวิชา คะแนน รูปนักเรียน และบันทึกของครูทั้งหมด' + (cloudUser ? 'ในบัญชีนี้ (ทุกเครื่อง)' : 'ในเครื่องนี้') + ' กู้คืนได้จากไฟล์สำรองเท่านั้น ลบเลยไหม')) { var prev = prevIds(); db = blank(); photosReplace({}); cloudReplaceAll(prev.sids, prev.codes); save(); viewSettings(); }
     };
   }
 
@@ -408,7 +496,7 @@
     f.querySelector('[data-act="cancel"]').onclick = function () { dlg.close(); };
     if (!isNew) f.querySelector('[data-act="del"]').onclick = function () {
       if (!confirm('ลบวิชา “' + subjName(s) + '” พร้อมคะแนนทั้งหมดของวิชานี้ ลบเลยไหม')) return;
-      db.subjects = db.subjects.filter(function (x) { return x.id !== s.id; }); delete db.scores[s.id];
+      db.subjects = db.subjects.filter(function (x) { return x.id !== s.id; }); delete db.scores[s.id]; cloudDelScores(s.id);
       save(); dlg.close(); go(location.hash.indexOf('settings') >= 0 ? '#/settings' : '#/scores');
     };
     f.onsubmit = function (e) {
@@ -445,6 +533,7 @@
         if (!confirm('ลบช่อง “' + it.name + '” พร้อมคะแนนในช่องนี้ของทุกห้อง ลบเลยไหม')) return;
         s.items.splice(idx, 1);
         var sc = db.scores[s.id] || {}; Object.keys(sc).forEach(function (code) { delete sc[code][it.id]; });
+        cloudPutScores(s.id);
         done();
       };
       f.querySelector('[data-act="left"]').onclick = function () { if (idx > 0) { s.items.splice(idx, 1); s.items.splice(idx - 1, 0, it); } done(); };
@@ -503,6 +592,132 @@
   });
   document.addEventListener('click', function (e) { if (!e.target.closest('.search')) qres.hidden = true; });
   window.addEventListener('hashchange', function () { q.value = ''; qres.hidden = true; route(); });
+  window.addEventListener('pagehide', function () { flushMain(); flushPatches(); });
+  window.addEventListener('online', status); window.addEventListener('offline', status);
 
-  photosLoad(route);
+  // ---------- ติดตั้งเป็นแอป ----------
+  var installEvt = null;
+  function standalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault(); installEvt = e;
+    var b = document.getElementById('install'), how = document.getElementById('install-how');
+    if (b) b.hidden = false; if (how) how.hidden = true;
+  });
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(function () {});
+
+  // ---------- ล็อกอิน ----------
+  function box(title, body) { app.innerHTML = '<div class="login"><div class="panel"><h1>' + title + '</h1>' + body + '</div></div>'; }
+  function viewLogin() {
+    app.innerHTML = '<div class="login"><form class="panel" id="login"><h1>เข้าสู่ระบบ</h1>' +
+      '<label>อีเมล<input type="email" name="email" required autocomplete="username"></label>' +
+      '<label>รหัสผ่าน<input type="password" name="password" required autocomplete="current-password"></label>' +
+      '<p class="err" hidden></p><p class="ok" hidden></p>' +
+      '<div class="row"><button class="primary" type="submit">เข้าสู่ระบบ</button><button type="button" class="plain" id="forgot">ลืมรหัสผ่าน</button></div></form></div>';
+    var f = document.getElementById('login'), err = f.querySelector('.err'), ok = f.querySelector('.ok'), btn = f.querySelector('[type=submit]');
+    function say(el, text) { err.hidden = ok.hidden = true; el.hidden = false; el.textContent = text; }
+    function explain(e) {
+      var c = (e && e.code) || '';
+      if (/invalid-credential|wrong-password|user-not-found|invalid-email/.test(c)) return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+      if (/too-many-requests/.test(c)) return 'ลองผิดหลายครั้งเกินไป รอสักครู่แล้วลองใหม่';
+      if (/network-request-failed/.test(c)) return 'เชื่อมต่ออินเทอร์เน็ตไม่ได้ ตรวจสอบการเชื่อมต่อแล้วลองใหม่';
+      if (/operation-not-allowed|configuration-not-found/.test(c)) return 'โปรเจกต์ Firebase ยังไม่ได้เปิดการล็อกอินด้วยอีเมล/รหัสผ่าน (ดูขั้นตอนใน README)';
+      if (/unauthorized-domain/.test(c)) return 'ยังไม่ได้เพิ่มโดเมนของเว็บนี้ใน Authorized domains ของ Firebase (ดูขั้นตอนใน README)';
+      return 'เข้าสู่ระบบไม่สำเร็จ (' + (c || 'ไม่ทราบสาเหตุ') + ')';
+    }
+    f.onsubmit = function (e) {
+      e.preventDefault(); btn.disabled = true; err.hidden = ok.hidden = true;
+      cloud.signIn(f.email.value.trim(), f.password.value).catch(function (er) { btn.disabled = false; say(err, explain(er)); });
+    };
+    document.getElementById('forgot').onclick = function () {
+      var email = f.email.value.trim();
+      if (!email) { say(err, 'ใส่อีเมลก่อน แล้วกด “ลืมรหัสผ่าน” อีกครั้ง'); f.email.focus(); return; }
+      cloud.resetPassword(email).then(function () { say(ok, 'ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ ' + email + ' แล้ว'); }, function (er) { say(err, explain(er)); });
+    };
+  }
+
+  // อัปเดตหน้าจอเมื่อมีข้อมูลเปลี่ยนจากเครื่องอื่น (ไม่ทำระหว่างที่กำลังพิมพ์หรือเปิดหน้าต่างแก้ไขอยู่)
+  var refreshTimer = 0;
+  function refresh() {
+    if (!cloudReady) return;
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(function () {
+      var a = document.activeElement;
+      if (dlg.open || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+      route(true);
+    }, 200);
+  }
+
+  // ครั้งแรกที่ล็อกอิน: ถ้าเครื่องนี้มีข้อมูลที่เคยเก็บไว้ในเครื่อง ให้ย้ายขึ้นคลาวด์
+  function migrateLocal() {
+    var d = loadLocal();
+    var n = d.subjects.length + Object.keys(d.notes).length + Object.keys(localPhotos).length;
+    if (!n || localStorage.getItem(KEY + ':keep-cloud')) return;
+    function upload() {
+      var prev = prevIds();
+      db = d; photos = localPhotos; localPhotos = {};
+      cloudReplaceAll(prev.sids, prev.codes);
+      localStorage.removeItem(KEY); if (idb) photoStore('readwrite').clear();
+      route();
+    }
+    cloud.remoteHasData().then(function (has) {
+      if (!has) { upload(); return; }
+      dlg.innerHTML = '<form method="dialog"><h2>เครื่องนี้มีข้อมูลที่ยังไม่ได้ขึ้นคลาวด์</h2>' +
+        '<p>เครื่องนี้มีข้อมูลที่กรอกไว้ก่อนเปิดใช้ระบบล็อกอิน (' + d.subjects.length + ' วิชา รูปนักเรียน ' + Object.keys(localPhotos).length + ' คน) และบัญชีนี้ก็มีข้อมูลบนคลาวด์อยู่แล้ว เลือกชุดที่จะใช้ต่อ</p>' +
+        '<div class="actions"><button type="button" data-act="local" class="danger">ใช้ข้อมูลในเครื่องนี้แทนที่บนคลาวด์</button><button type="button" data-act="cloud" class="primary">ใช้ข้อมูลบนคลาวด์</button></div></form>';
+      dlg.querySelector('[data-act="cloud"]').onclick = function () { localStorage.setItem(KEY + ':keep-cloud', '1'); dlg.close(); };
+      dlg.querySelector('[data-act="local"]').onclick = function () { dlg.close(); upload(); };
+      dlg.showModal();
+    }, function () { /* ออฟไลน์อยู่ ไว้ถามใหม่ครั้งหน้า */ });
+  }
+
+  function startCloud() {
+    document.body.classList.add('locked');
+    box('กำลังเชื่อมต่อ', '<p class="muted">รอสักครู่</p>');
+    import('./cloud.js').then(function (m) {
+      cloud = m;
+      m.init(CONFIG, {
+        auth: function (u) {
+          cloudUser = u; cloudReady = false; cloudErr = ''; db = blank(); photos = {};
+          lastMain = ''; mainDirty = false; patchQ = {};
+          document.body.classList.toggle('locked', !u); status();
+          if (u) box('กำลังโหลดข้อมูล', '<p class="muted">' + h(u.email) + '</p>'); else viewLogin();
+        },
+        main: function (data, pend) {
+          if (mainDirty) return; // ในเครื่องมีการแก้ไขที่ใหม่กว่า กำลังจะส่งขึ้นไป
+          data = data || {};
+          db.subjects = data.subjects || []; db.notes = data.notes || {}; db.lastBackup = data.lastBackup || null;
+          lastMain = JSON.stringify(mainObj());
+          if (!pend) refresh();
+        },
+        scores: function (sid, map, pend) {
+          if (map === null) delete db.scores[sid];
+          else {
+            db.scores[sid] = map;
+            var q = patchQ[sid] || {}; // ทับด้วยคะแนนที่เพิ่งกรอกและยังไม่ได้ส่ง
+            Object.keys(q).forEach(function (code) { Object.keys(q[code]).forEach(function (iid) { putLocal(sid, code, iid, q[code][iid]); }); });
+          }
+          if (!pend) refresh();
+        },
+        photo: function (code, data, pend) { if (data) photos[code] = data; else delete photos[code]; if (!pend) refresh(); },
+        ready: function () { cloudReady = true; route(); migrateLocal(); },
+        error: function (code) {
+          cloudErr = code; status();
+          if (!cloudReady) box('อ่านข้อมูลจากคลาวด์ไม่ได้', '<p>รหัสข้อผิดพลาด: ' + h(code) + '</p><p>ถ้าเป็น permission-denied ให้ตรวจสอบ Rules ของ Firestore ตามขั้นตอนใน README</p>' +
+            '<div class="row"><button id="retry" class="primary">ลองใหม่</button><button id="out">ออกจากระบบ</button></div>');
+          var r = document.getElementById('retry'), o = document.getElementById('out');
+          if (r) r.onclick = function () { location.reload(); };
+          if (o) o.onclick = function () { cloud.signOut(); };
+        }
+      });
+    }, function () {
+      box('โหลดระบบล็อกอินไม่ได้', '<p>ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่</p><div class="row"><button id="retry" class="primary">ลองใหม่</button></div>');
+      document.getElementById('retry').onclick = function () { location.reload(); };
+    });
+  }
+
+  photosLoad(function () {
+    if (!CONFIG) { route(); return; }
+    localPhotos = photos; photos = {};
+    startCloud();
+  });
 })();

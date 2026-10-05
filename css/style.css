@@ -16,6 +16,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -91,7 +92,7 @@ button.primary:hover { background: var(--green-deep); border-color: var(--green-
 button.danger { border-color: var(--red); color: var(--red); }
 button.danger:hover { background: #fbeceb; }
 button.plain { border-color: transparent; padding-inline: .5rem; }
-select, input[type="text"], input[type="number"], textarea {
+select, input[type="text"], input[type="number"], input[type="email"], input[type="password"], textarea {
   font: inherit; color: inherit; background: #fff;
   border: 1.5px solid var(--rule-strong); border-radius: 6px; padding: .4rem .6rem;
 }
@@ -207,8 +208,8 @@ table.plain th { font-family: var(--data); color: var(--muted); }
 dialog { border: 1.5px solid var(--green); border-radius: 8px; padding: 0; width: min(32rem, calc(100vw - 2rem)); color: var(--ink); font: inherit; }
 dialog::backdrop { background: rgba(17,63,49,.45); }
 dialog form { padding: 1.25rem; display: grid; gap: .9rem; }
-dialog label { display: grid; gap: .25rem; font-weight: 600; font-size: .95rem; }
-dialog label input { font-family: var(--data); font-weight: 400; }
+dialog label, .login label { display: grid; gap: .25rem; font-weight: 600; font-size: .95rem; }
+dialog label input, .login label input { font-family: var(--data); font-weight: 400; }
 dialog fieldset { border: 1.5px solid var(--rule); border-radius: 6px; padding: .5rem .9rem .7rem; margin: 0; }
 dialog legend { font-family: var(--ui); font-weight: 600; font-size: .95rem; padding: 0 .3rem; }
 .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); gap: .15rem .5rem; }
@@ -216,6 +217,15 @@ dialog legend { font-family: var(--ui); font-weight: 600; font-size: .95rem; pad
 .actions { display: flex; gap: .6rem; justify-content: flex-end; flex-wrap: wrap; }
 .actions .left { margin-right: auto; }
 .err { color: var(--red); font-weight: 700; margin: 0; }
+.ok { color: var(--green); font-weight: 700; margin: 0; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; background: var(--tint); padding: .05rem .3rem; border-radius: 3px; }
+
+/* ---------- ล็อกอิน ---------- */
+.login { max-width: 26rem; margin: 8vh auto 0; }
+.login .panel { display: grid; gap: .9rem; padding: 1.5rem; border-color: var(--green); }
+.login .panel > * { margin: 0; }
+button:disabled { opacity: .55; cursor: default; }
+body.locked .mainnav, body.locked .search { visibility: hidden; }
 
 @media (max-width: 720px) {
   body { font-size: 16px; }
