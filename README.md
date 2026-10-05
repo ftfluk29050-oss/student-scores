@@ -34,7 +34,7 @@
 
 1. **สร้างโปรเจกต์** เปิด https://console.firebase.google.com กด “Create a project” ตั้งชื่อ เช่น `student-scores` (ปิด Google Analytics ได้)
 2. **เปิดการล็อกอิน** เมนู Build → Authentication → Get started → แท็บ Sign-in method → เลือก **Email/Password** → Enable → Save
-3. **สร้างบัญชีครู** แท็บ Users → Add user → ใส่อีเมลและรหัสผ่านที่จะใช้ล็อกอิน
+3. **สร้างบัญชีครู** กด “สมัครใช้งาน” ที่หน้าล็อกอินของเว็บ (หรือสร้างในแท็บ Users → Add user ของ Firebase ก็ได้)
 4. **อนุญาตโดเมนของเว็บ** Authentication → Settings → Authorized domains → Add domain → `ftfluk29050-oss.github.io`
 5. **สร้างฐานข้อมูล** เมนู Build → Firestore Database → Create database → เลือกตำแหน่ง `asia-southeast1 (Singapore)` → Start in **production mode**
 6. **ตั้งกฎความปลอดภัย** แท็บ Rules ของ Firestore ลบของเดิม วางข้อความนี้ แล้วกด Publish

@@ -607,28 +607,41 @@
 
   // ---------- ล็อกอิน ----------
   function box(title, body) { app.innerHTML = '<div class="login"><div class="panel"><h1>' + title + '</h1>' + body + '</div></div>'; }
-  function viewLogin() {
-    app.innerHTML = '<div class="login"><form class="panel" id="login"><h1>เข้าสู่ระบบ</h1>' +
+  function viewLogin(signup) {
+    app.innerHTML = '<div class="login"><form class="panel" id="login"><h1>' + (signup ? 'สมัครใช้งาน' : 'เข้าสู่ระบบ') + '</h1>' +
+      (signup ? '<p class="muted">สร้างบัญชีใหม่ด้วยอีเมลของคุณครู แต่ละบัญชีมีสมุดคะแนนของตัวเอง</p>' : '') +
       '<label>อีเมล<input type="email" name="email" required autocomplete="username"></label>' +
-      '<label>รหัสผ่าน<input type="password" name="password" required autocomplete="current-password"></label>' +
+      '<label>รหัสผ่าน' + (signup ? ' (อย่างน้อย 6 ตัว)' : '') + '<input type="password" name="password" required minlength="6" autocomplete="' + (signup ? 'new-password' : 'current-password') + '"></label>' +
+      (signup ? '<label>ยืนยันรหัสผ่าน<input type="password" name="password2" required autocomplete="new-password"></label>' : '') +
       '<p class="err" hidden></p><p class="ok" hidden></p>' +
-      '<div class="row"><button class="primary" type="submit">เข้าสู่ระบบ</button><button type="button" class="plain" id="forgot">ลืมรหัสผ่าน</button></div></form></div>';
+      '<div class="row"><button class="primary" type="submit">' + (signup ? 'สมัครใช้งาน' : 'เข้าสู่ระบบ') + '</button>' +
+      (signup ? '' : '<button type="button" class="plain" id="forgot">ลืมรหัสผ่าน</button>') + '</div>' +
+      '<p class="switch">' + (signup ? 'มีบัญชีอยู่แล้ว' : 'ยังไม่มีบัญชี') + ' <button type="button" id="swap">' + (signup ? 'เข้าสู่ระบบ' : 'สมัครใช้งาน') + '</button></p></form></div>';
     var f = document.getElementById('login'), err = f.querySelector('.err'), ok = f.querySelector('.ok'), btn = f.querySelector('[type=submit]');
     function say(el, text) { err.hidden = ok.hidden = true; el.hidden = false; el.textContent = text; }
     function explain(e) {
       var c = (e && e.code) || '';
-      if (/invalid-credential|wrong-password|user-not-found|invalid-email/.test(c)) return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+      if (/invalid-credential|wrong-password|user-not-found/.test(c)) return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+      if (/invalid-email/.test(c)) return 'รูปแบบอีเมลไม่ถูกต้อง';
+      if (/email-already-in-use/.test(c)) return 'อีเมลนี้มีบัญชีอยู่แล้ว ให้กด “เข้าสู่ระบบ” หรือ “ลืมรหัสผ่าน”';
+      if (/weak-password/.test(c)) return 'รหัสผ่านสั้นเกินไป ต้องมีอย่างน้อย 6 ตัว';
       if (/too-many-requests/.test(c)) return 'ลองผิดหลายครั้งเกินไป รอสักครู่แล้วลองใหม่';
       if (/network-request-failed/.test(c)) return 'เชื่อมต่ออินเทอร์เน็ตไม่ได้ ตรวจสอบการเชื่อมต่อแล้วลองใหม่';
-      if (/operation-not-allowed|configuration-not-found/.test(c)) return 'โปรเจกต์ Firebase ยังไม่ได้เปิดการล็อกอินด้วยอีเมล/รหัสผ่าน (ดูขั้นตอนใน README)';
+      if (/operation-not-allowed|configuration-not-found|admin-restricted/.test(c)) return 'โปรเจกต์ Firebase ยังไม่ได้เปิดการสมัครหรือล็อกอินด้วยอีเมล/รหัสผ่าน (ดูขั้นตอนใน README)';
       if (/unauthorized-domain/.test(c)) return 'ยังไม่ได้เพิ่มโดเมนของเว็บนี้ใน Authorized domains ของ Firebase (ดูขั้นตอนใน README)';
-      return 'เข้าสู่ระบบไม่สำเร็จ (' + (c || 'ไม่ทราบสาเหตุ') + ')';
+      return (signup ? 'สมัครใช้งานไม่สำเร็จ (' : 'เข้าสู่ระบบไม่สำเร็จ (') + (c || 'ไม่ทราบสาเหตุ') + ')';
     }
     f.onsubmit = function (e) {
-      e.preventDefault(); btn.disabled = true; err.hidden = ok.hidden = true;
-      cloud.signIn(f.email.value.trim(), f.password.value).catch(function (er) { btn.disabled = false; say(err, explain(er)); });
+      e.preventDefault(); err.hidden = ok.hidden = true;
+      if (signup && f.password.value !== f.password2.value) { say(err, 'รหัสผ่านสองช่องไม่ตรงกัน'); f.password2.focus(); return; }
+      btn.disabled = true;
+      var email = f.email.value.trim();
+      (signup ? cloud.signUp(email, f.password.value) : cloud.signIn(email, f.password.value))
+        .catch(function (er) { btn.disabled = false; say(err, explain(er)); });
     };
-    document.getElementById('forgot').onclick = function () {
+    document.getElementById('swap').onclick = function () { viewLogin(!signup); };
+    var fg = document.getElementById('forgot');
+    if (fg) fg.onclick = function () {
       var email = f.email.value.trim();
       if (!email) { say(err, 'ใส่อีเมลก่อน แล้วกด “ลืมรหัสผ่าน” อีกครั้ง'); f.email.focus(); return; }
       cloud.resetPassword(email).then(function () { say(ok, 'ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ ' + email + ' แล้ว'); }, function (er) { say(err, explain(er)); });

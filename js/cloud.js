@@ -4,7 +4,7 @@
      users/{uid}/scores/{วิชา}     {s: {รหัสนักเรียน: {ช่องคะแนน: คะแนน}}}
      users/{uid}/photos/{รหัสนักเรียน} {data: รูปแบบ data URL} */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut as fbSignOut, sendPasswordResetEmail }
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as fbSignOut, sendPasswordResetEmail }
   from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, setDoc, deleteDoc,
   onSnapshot, getDocFromServer, getDocsFromServer, deleteField, query, limit }
@@ -54,6 +54,7 @@ function listen() {
 }
 
 export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
+export const signUp = (email, password) => createUserWithEmailAndPassword(auth, email, password);
 export const signOut = () => fbSignOut(auth);
 export const resetPassword = (email) => sendPasswordResetEmail(auth, email);
 
