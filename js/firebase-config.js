@@ -1,11 +1,11 @@
-// การตั้งค่าบัญชีออนไลน์ (Firebase)
-// ถ้าเป็น null เว็บจะเก็บข้อมูลในเครื่องและไม่มีหน้าล็อกอิน
-// เมื่อสร้างโปรเจกต์ Firebase แล้ว ให้นำค่า firebaseConfig มาวางแทน null (ดูขั้นตอนใน README)
-// ตัวอย่าง:
-// window.FIREBASE_CONFIG = {
-//   apiKey: "...",
-//   authDomain: "ชื่อโปรเจกต์.firebaseapp.com",
-//   projectId: "ชื่อโปรเจกต์",
-//   appId: "..."
-// };
-window.FIREBASE_CONFIG = null;
+// การตั้งค่าบัญชีออนไลน์ (Firebase) ของโปรเจกต์ student-scores-ed6cb
+// ค่าเหล่านี้เป็นตัวระบุโปรเจกต์สำหรับฝั่งเว็บ ไม่ใช่รหัสลับ การป้องกันข้อมูลอยู่ที่การล็อกอินและ Rules ของ Firestore
+// ถ้าเปลี่ยนเป็น window.FIREBASE_CONFIG = null; เว็บจะกลับไปเก็บข้อมูลในเครื่องและไม่มีหน้าล็อกอิน
+window.FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDDVODi9-Eac2v8uKNIEeGX3FasaZR_DqA",
+  authDomain: "student-scores-ed6cb.firebaseapp.com",
+  projectId: "student-scores-ed6cb",
+  storageBucket: "student-scores-ed6cb.firebasestorage.app",
+  messagingSenderId: "1054898844435",
+  appId: "1:1054898844435:web:6e10f0057e4067610c60e6"
+};
