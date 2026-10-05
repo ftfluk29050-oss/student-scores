@@ -1,8 +1,8 @@
 // Service worker: ทำให้เปิดแอปได้ตอนออฟไลน์
 // ไฟล์ของเว็บ: ลองโหลดจากอินเทอร์เน็ตก่อน (จะได้เวอร์ชันล่าสุดเสมอ) ถ้าออฟไลน์ใช้สำเนาที่เก็บไว้
 // ไฟล์ Firebase SDK และฟอนต์: ใช้สำเนาที่เก็บไว้ก่อน เพราะไม่เปลี่ยนแปลง
-const CACHE = 'student-scores-v3';
-const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/cloud.js', 'js/firebase-config.js', 'js/vendor/paper-warp.js', 'data/roster.js',
+const CACHE = 'student-scores-v4';
+const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/bg.js', 'js/cloud.js', 'js/firebase-config.js', 'js/vendor/paper-warp.js', 'data/roster.js',
   'manifest.webmanifest', 'img/logo-mark.png', 'img/favicon.png', 'img/icon-192.png', 'img/icon-512.png'];
 const STATIC_HOSTS = ['www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 

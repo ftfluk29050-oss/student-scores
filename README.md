@@ -70,6 +70,7 @@
 index.html        โครงหน้าเว็บ
 css/style.css     หน้าตา
 js/app.js         การทำงานทั้งหมด
+js/bg.js          พื้นหลังแถบสีเขียวเคลื่อนไหว (Katihar)
 js/cloud.js       การล็อกอินและซิงก์กับ Firebase
 js/vendor/paper-warp.js  พื้นหลังเคลื่อนไหวของการ์ดหน้าแรก (Paper Shaders, Apache-2.0)
 js/firebase-config.js  ค่าเชื่อมต่อ Firebase (null = ไม่ใช้ล็อกอิน)
