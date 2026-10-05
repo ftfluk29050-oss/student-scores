@@ -47,7 +47,8 @@ a { color: var(--green); }
   flex-wrap: wrap;
   border-bottom: 4px solid var(--green);
 }
-.brand { color: #fff; text-decoration: none; font-weight: 700; font-size: 1.25rem; }
+.brand { color: #fff; text-decoration: none; font-weight: 700; font-size: 1.25rem; display: flex; align-items: center; gap: .6rem; }
+.brand img { display: block; height: 2.4rem; width: auto; }
 .mainnav { display: flex; gap: .25rem; flex: 1; }
 .mainnav a {
   color: #d5e6de; text-decoration: none; font-weight: 500;
