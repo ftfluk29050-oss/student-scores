@@ -151,7 +151,7 @@ table.grid { border-collapse: separate; border-spacing: 0; width: 100%; font-var
 .hint { color: var(--muted); font-size: .92rem; margin-top: .7rem; }
 
 /* ---------- หน้าว่าง / กล่องข้อความ ---------- */
-.empty { background: var(--sheet); border: 1.5px dashed var(--rule-strong); border-radius: 6px; padding: 2.5rem 1.5rem; }
+.empty { background: var(--sheet); border: 1.5px dashed var(--rule-strong); border-radius: 6px; padding: 2.5rem 1.5rem; margin-bottom: 1.25rem; }
 .empty h1 { margin-bottom: .5rem; }
 .panel { background: var(--sheet); border: 1.5px solid var(--rule); border-radius: 6px; padding: 1.1rem 1.25rem; margin-bottom: 1.25rem; }
 .panel > :last-child { margin-bottom: 0; }
@@ -172,6 +172,15 @@ table.plain th { font-family: var(--data); color: var(--muted); }
   display: grid; place-items: center; line-height: 1;
 }
 .stu-meta { color: var(--muted); }
+.stu-head .who { align-items: flex-start; }
+.photo {
+  flex: none; width: 7.5rem; aspect-ratio: 3 / 4; border: 1.5px solid var(--green); border-radius: 4px;
+  background: var(--tint); overflow: hidden; display: grid; place-items: center;
+  color: var(--muted); font-size: .9rem; text-align: center;
+}
+.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.grid .c-name a:has(.thumb) { display: flex; align-items: center; gap: .55rem; }
+.thumb { flex: none; width: 1.75rem; height: 1.75rem; border-radius: 50%; object-fit: cover; object-position: 50% 25%; background: var(--tint); border: 1px solid var(--rule); }
 .subject { background: var(--sheet); border: 1.5px solid var(--green); border-radius: 4px; margin-bottom: 1.25rem; }
 .subject > header { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; justify-content: space-between; align-items: center; padding: .8rem 1rem; border-bottom: 1.5px solid var(--green); background: var(--tint); }
 .subject > header h2 { margin: 0; }
@@ -219,6 +228,8 @@ dialog legend { font-family: var(--ui); font-weight: 600; font-size: .95rem; pad
   .grid .c-no { width: 2.6rem; }
   .grid td.cell { min-width: 4.2rem; }
   .items .avg { display: none; }
+  .photo { width: 5.5rem; }
+  .stu-head h1 { font-size: 1.35rem; }
   .items th { width: auto; }
   .items th, .items td { padding: .5rem .6rem; }
 }
@@ -230,5 +241,5 @@ dialog legend { font-family: var(--ui); font-weight: 600; font-size: .95rem; pad
   .subject, .panel { break-inside: avoid; }
   .gridwrap { max-height: none; overflow: visible; }
   .bar i { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  .stu-no, .subject > header { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .subject > header { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }

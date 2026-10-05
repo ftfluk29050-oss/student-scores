@@ -43,6 +43,40 @@
     el.style.color = storageOk ? '' : 'var(--red)';
   }
 
+  // ---------- รูปนักเรียน (เก็บใน IndexedDB ของเบราว์เซอร์ เพราะรูปใหญ่เกินที่ localStorage รับได้) ----------
+  var photos = {}, idb = null;
+  function photoStore(mode) { return idb.transaction('photos', mode).objectStore('photos'); }
+  function photosLoad(done) {
+    var req; try { req = indexedDB.open('student-scores', 1); } catch (e) { done(); return; }
+    req.onupgradeneeded = function () { req.result.createObjectStore('photos'); };
+    req.onerror = function () { done(); };
+    req.onsuccess = function () {
+      idb = req.result;
+      var cur = photoStore('readonly').openCursor();
+      cur.onsuccess = function () { var c = cur.result; if (c) { photos[c.key] = c.value; c.continue(); } else done(); };
+      cur.onerror = function () { done(); };
+    };
+  }
+  function photoSet(code, dataUrl) { photos[code] = dataUrl; if (idb) photoStore('readwrite').put(dataUrl, code); }
+  function photoDel(code) { delete photos[code]; if (idb) photoStore('readwrite').delete(code); }
+  function photosReplace(all) {
+    photos = {}; if (idb) photoStore('readwrite').clear();
+    Object.keys(all || {}).forEach(function (code) { if (/^data:image\//.test(all[code])) photoSet(code, all[code]); });
+  }
+  // ย่อและครอบรูปเป็นสัดส่วน 3:4 (300x400) ก่อนเก็บ เพื่อให้ไฟล์เล็ก
+  function photoFromFile(file, ok, fail) {
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function () {
+      var W = 300, H = 400, s = Math.max(W / img.width, H / img.height);
+      var w = img.width * s, hh = img.height * s, c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      c.getContext('2d').drawImage(img, (W - w) / 2, (H - hh) / 3, w, hh);
+      URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); fail(); };
+    img.src = url;
+  }
+
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function h(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function fmt(n) { return String(+(+n).toFixed(2)); }
@@ -228,7 +262,8 @@
       (subs.length ? '' : '<th style="text-align:left;font-weight:500">ยังไม่มีวิชาที่สอนห้องนี้</th>') + '</tr></thead><tbody>';
     cls.students.forEach(function (st) {
       html += '<tr class="link" data-code="' + st.code + '"><td class="c-no">' + st.no + '</td><td class="c-code">' + st.code + '</td>' +
-        '<td class="c-name"><a href="#/student/' + st.code + '">' + h(st.name) + '</a></td>' +
+        '<td class="c-name"><a href="#/student/' + st.code + '">' +
+        (photos[st.code] ? '<img class="thumb" src="' + photos[st.code] + '" alt="">' : '<i class="thumb"></i>') + h(st.name) + '</a></td>' +
         subs.map(function (s) {
           var m = summary(s, st.code);
           if (!m.done) return '<td class="c-grade"><span class="pending">ยังไม่มีคะแนน</span></td>';
@@ -256,8 +291,12 @@
       (prev ? '<a class="btn" href="#/student/' + prev.code + '">คนก่อนหน้า</a>' : '') +
       (next ? '<a class="btn" href="#/student/' + next.code + '">คนถัดไป</a>' : '') +
       '<button id="print">พิมพ์หน้านี้</button></div>' +
-      '<div class="stu-head"><div class="who"><div class="stu-no" title="เลขที่">' + st.no + '</div><div><h1>' + h(st.name) + '</h1>' +
-      '<div class="stu-meta">' + cls.name + ' เลขที่ ' + st.no + ' รหัสนักเรียน ' + st.code + '<br>ครูที่ปรึกษา ' + h(cls.advisors.join(', ')) + '</div></div></div></div>';
+      '<div class="stu-head"><div class="who"><div class="photo">' +
+      (photos[code] ? '<img src="' + photos[code] + '" alt="รูปของ ' + h(st.name) + '">' : '<span>ยังไม่มีรูป</span>') + '</div><div><h1>' + h(st.name) + '</h1>' +
+      '<div class="stu-meta">' + cls.name + ' เลขที่ ' + st.no + ' รหัสนักเรียน ' + st.code + '<br>ครูที่ปรึกษา ' + h(cls.advisors.join(', ')) + '</div>' +
+      '<div class="row noprint" style="margin-top:.6rem"><button id="photo-pick">' + (photos[code] ? 'เปลี่ยนรูป' : 'อัปโหลดรูปนักเรียน') + '</button>' +
+      (photos[code] ? '<button id="photo-del" class="danger">ลบรูป</button>' : '') +
+      '<input type="file" id="photo-file" accept="image/*" hidden></div><p class="err" id="photo-err" hidden></p></div></div></div>';
 
     if (!subs.length) html += '<div class="empty"><h2>ยังไม่มีวิชาที่สอนห้อง ' + cls.name + '</h2><p>เพิ่มวิชาและเลือกห้องนี้ที่หน้า <a href="#/settings">วิชาและข้อมูล</a> แล้วคะแนนจะแสดงที่นี่</p></div>';
 
@@ -286,6 +325,17 @@
       '<textarea id="note" placeholder="เช่น งานที่ต้องตามส่ง พฤติกรรมในชั้นเรียน สิ่งที่ควรช่วยเสริม">' + h(db.notes[code] || '') + '</textarea></div>';
     app.innerHTML = html;
     document.getElementById('print').onclick = function () { window.print(); };
+    var pf = document.getElementById('photo-file');
+    document.getElementById('photo-pick').onclick = function () { pf.click(); };
+    pf.onchange = function () {
+      if (!pf.files[0]) return;
+      photoFromFile(pf.files[0], function (data) { photoSet(code, data); viewStudent(code); }, function () {
+        var er = document.getElementById('photo-err'); er.hidden = false;
+        er.textContent = 'เปิดไฟล์นี้เป็นรูปไม่ได้ เลือกไฟล์รูป เช่น .jpg หรือ .png';
+      });
+    };
+    var pd = document.getElementById('photo-del');
+    if (pd) pd.onclick = function () { if (confirm('ลบรูปของ ' + st.name + ' ใช่ไหม')) { photoDel(code); viewStudent(code); } };
     document.getElementById('note').oninput = function () {
       if (this.value.trim()) db.notes[code] = this.value; else delete db.notes[code];
       save();
@@ -304,8 +354,8 @@
         '<span class="row"><a class="btn" href="#/scores/' + s.id + '">กรอกคะแนน</a><button data-edit="' + s.id + '">แก้ไขวิชา</button></span></li>';
     }).join('') + '</ul>' : '<p class="muted">ยังไม่มีวิชา</p>';
     html += '</div><div class="panel"><h2>สำรองและกู้คืนข้อมูล</h2>' +
-      '<p>คะแนนเก็บอยู่ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ถ้าล้างข้อมูลเบราว์เซอร์หรือเปลี่ยนเครื่อง คะแนนจะไม่ตามไปด้วย ควรสำรองเป็นไฟล์ทุกครั้งหลังกรอกคะแนน</p>' +
-      '<p class="muted">ตอนนี้มีคะแนน ' + nScores + ' ช่อง สำรองล่าสุด ' + (db.lastBackup ? new Date(db.lastBackup).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : 'ยังไม่เคยสำรอง') + '</p>' +
+      '<p>คะแนน รูปนักเรียน และบันทึกของครู เก็บอยู่ในเบราว์เซอร์ของเครื่องนี้เท่านั้น ถ้าล้างข้อมูลเบราว์เซอร์หรือเปลี่ยนเครื่อง ข้อมูลจะไม่ตามไปด้วย ควรสำรองเป็นไฟล์ทุกครั้งหลังกรอกคะแนน ไฟล์สำรองมีรูปนักเรียนรวมอยู่ด้วย</p>' +
+      '<p class="muted">ตอนนี้มีคะแนน ' + nScores + ' ช่อง รูปนักเรียน ' + Object.keys(photos).length + ' คน สำรองล่าสุด ' + (db.lastBackup ? new Date(db.lastBackup).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : 'ยังไม่เคยสำรอง') + '</p>' +
       '<div class="row"><button class="primary" id="backup">สำรองข้อมูลเป็นไฟล์</button><button id="restore">กู้คืนจากไฟล์สำรอง</button>' +
       '<input type="file" id="file" accept=".json,application/json" hidden><button class="danger" id="wipe">ลบข้อมูลทั้งหมดในเครื่องนี้</button></div><p class="err" id="msg" hidden></p></div>' +
       '<div class="panel"><h2>เกณฑ์ตัดเกรด</h2><p>คิดจากร้อยละของคะแนนรวมทุกช่อง เกรดจะแสดงเมื่อกรอกคะแนนครบทุกช่องแล้ว</p><table class="plain"><tr><th>ร้อยละตั้งแต่</th>' +
@@ -317,7 +367,7 @@
     app.querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { subjectDialog(subj(b.dataset.edit)); }; });
     document.getElementById('backup').onclick = function () {
       db.lastBackup = Date.now(); save();
-      download('สำรองคะแนน-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(db, null, 1), 'application/json');
+      download('สำรองคะแนน-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(Object.assign({}, db, { photos: photos })), 'application/json');
       viewSettings();
     };
     var file = document.getElementById('file'), msg = document.getElementById('msg');
@@ -330,13 +380,14 @@
           var d = JSON.parse(rd.result);
           if (!d || !Array.isArray(d.subjects) || typeof d.scores !== 'object') throw 0;
           if (!confirm('แทนที่ข้อมูลในเครื่องนี้ด้วยข้อมูลจากไฟล์ “' + f.name + '” ใช่ไหม')) return;
+          photosReplace(d.photos); delete d.photos;
           d.notes = d.notes || {}; db = d; save(); viewSettings();
         } catch (e) { msg.hidden = false; msg.textContent = 'ไฟล์นี้ไม่ใช่ไฟล์สำรองของสมุดคะแนน เลือกไฟล์ .json ที่ได้จากปุ่ม “สำรองข้อมูลเป็นไฟล์”'; }
       };
       rd.readAsText(f);
     };
     document.getElementById('wipe').onclick = function () {
-      if (confirm('ลบวิชา คะแนน และบันทึกของครูทั้งหมดในเครื่องนี้ กู้คืนได้จากไฟล์สำรองเท่านั้น ลบเลยไหม')) { db = blank(); save(); viewSettings(); }
+      if (confirm('ลบวิชา คะแนน รูปนักเรียน และบันทึกของครูทั้งหมดในเครื่องนี้ กู้คืนได้จากไฟล์สำรองเท่านั้น ลบเลยไหม')) { db = blank(); photosReplace({}); save(); viewSettings(); }
     };
   }
 
@@ -453,5 +504,5 @@
   document.addEventListener('click', function (e) { if (!e.target.closest('.search')) qres.hidden = true; });
   window.addEventListener('hashchange', function () { q.value = ''; qres.hidden = true; route(); });
 
-  route();
+  photosLoad(route);
 })();
