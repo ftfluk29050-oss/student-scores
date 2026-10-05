@@ -189,7 +189,8 @@
   function route(keepScroll) {
     if (CONFIG && !(cloudUser && cloudReady)) { if (cloud && !cloudUser) viewLogin(); return; }
     var p = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
-    var page = p[0] || 'scores';
+    var page = p[0] || 'home';
+    if (!(page === 'home' && keepScroll === true)) stopShaders();
     document.querySelectorAll('[data-nav]').forEach(function (a) {
       var on = a.dataset.nav === page || (page === 'student' && a.dataset.nav === 'students');
       if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
@@ -197,8 +198,61 @@
     if (page === 'students') viewStudents(p[1]);
     else if (page === 'student') viewStudent(p[1]);
     else if (page === 'settings') viewSettings();
-    else viewScores(p[1], p[2]);
+    else if (page === 'scores') viewScores(p[1], p[2]);
+    else viewHome(keepScroll === true);
     if (keepScroll !== true) window.scrollTo(0, 0);
+  }
+
+  // ---------- หน้าแรก ----------
+  // การ์ดพื้นหลังเชเดอร์เคลื่อนไหว (Warp ของ Paper Shaders) ถ้าเครื่องไม่รองรับ WebGL จะเห็นพื้นหลังไล่สีแทน
+  var HOME = [
+    { key: 'scores', title: 'กรอกคะแนน', go: 'ไปที่ตารางคะแนน', href: '#/scores',
+      icon: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
+      warp: { proportion: 0.35, softness: 0.9, distortion: 0.18, swirl: 0.7, swirlIterations: 10, shape: 'checks', shapeScale: 0.1,
+        colors: ['hsl(120, 100%, 25%)', 'hsl(140, 100%, 60%)', 'hsl(100, 90%, 30%)', 'hsl(130, 100%, 70%)'] } },
+    { key: 'students', title: 'ข้อมูลนักเรียน', go: 'ดูรายชื่อนักเรียน', href: '#/students',
+      icon: 'M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z',
+      warp: { proportion: 0.4, softness: 1.2, distortion: 0.2, swirl: 0.9, swirlIterations: 12, shape: 'dots', shapeScale: 0.12,
+        colors: ['hsl(200, 100%, 25%)', 'hsl(180, 100%, 65%)', 'hsl(160, 90%, 35%)', 'hsl(190, 100%, 75%)'] } },
+    { key: 'add', title: 'เพิ่มวิชา', go: 'สร้างวิชาใหม่', href: '#/scores',
+      icon: 'M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-2 11h-3v3h-2v-3H8v-2h3V8h2v3h3v2z',
+      warp: { proportion: 0.45, softness: 1.1, distortion: 0.22, swirl: 0.8, swirlIterations: 15, shape: 'dots', shapeScale: 0.09,
+        colors: ['hsl(30, 100%, 35%)', 'hsl(50, 100%, 65%)', 'hsl(40, 90%, 40%)', 'hsl(45, 100%, 75%)'] } }
+  ];
+  var shaders = [], shaderRun = 0;
+  function stopShaders() { shaderRun++; shaders.forEach(function (s) { try { s.dispose(); } catch (e) { /* ปิดไปแล้ว */ } }); shaders = []; }
+  function homeText(key) {
+    var nStu = Object.keys(stuByCode).length;
+    if (key === 'scores') return db.subjects.length
+      ? 'เลือกวิชาและห้อง แล้วกรอกคะแนนในตาราง ระบบรวมคะแนนและตัดเกรดให้ ตอนนี้มี ' + db.subjects.length + ' วิชา'
+      : 'เลือกวิชาและห้อง แล้วกรอกคะแนนในตาราง ระบบรวมคะแนนและตัดเกรดให้ เริ่มได้เมื่อเพิ่มวิชาแรก';
+    if (key === 'students') return 'รายชื่อ ' + nStu + ' คน ' + R.classes.length + ' ห้อง เปิดดูคะแนนรายบุคคล รูปถ่าย และบันทึกของครู';
+    return 'เพิ่มวิชาที่สอน เลือกห้อง และกำหนดช่องคะแนน เพิ่มได้ไม่จำกัดจำนวน';
+  }
+  function viewHome(updateOnly) {
+    if (updateOnly && app.querySelector('.home')) { // ข้อมูลเปลี่ยนจากเครื่องอื่น: แก้เฉพาะข้อความ ไม่เริ่มภาพเคลื่อนไหวใหม่
+      HOME.forEach(function (c) { var el = app.querySelector('[data-card="' + c.key + '"] p'); if (el) el.textContent = homeText(c.key); });
+      return;
+    }
+    app.innerHTML = '<section class="home"><header><h1>สมุดคะแนนนักเรียน</h1><p>เลือกสิ่งที่จะทำ</p></header><div class="cards">' +
+      HOME.map(function (c) {
+        return '<a class="card" href="' + c.href + '" data-card="' + c.key + '"><span class="warp warp-' + c.key + '" aria-hidden="true"></span><span class="card-body">' +
+          '<svg class="card-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="' + c.icon + '"/></svg>' +
+          '<h2>' + c.title + '</h2><p>' + h(homeText(c.key)) + '</p>' +
+          '<span class="card-go">' + c.go + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></span>' +
+          '</span></a>';
+      }).join('') + '</div></section>';
+    app.querySelector('[data-card="add"]').onclick = function (e) { e.preventDefault(); subjectDialog(null); };
+    var run = ++shaderRun, still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    import('./vendor/paper-warp.js').then(function (m) {
+      HOME.forEach(function (c, i) {
+        var el = app.querySelector('.warp-' + c.key); if (!el || run !== shaderRun) return;
+        m.mountWarp(el, Object.assign({ speed: still ? 0 : 0.8, frame: i * 4000 }, c.warp)).then(function (s) {
+          if (run !== shaderRun) { s.dispose(); return; }
+          shaders.push(s);
+        }, function () { /* ไม่มี WebGL ใช้พื้นหลังไล่สีจาก CSS */ });
+      });
+    }, function () { /* โหลดเชเดอร์ไม่ได้ ใช้พื้นหลังไล่สีจาก CSS */ });
   }
 
   // ---------- หน้ากรอกคะแนน ----------
@@ -692,7 +746,7 @@
         auth: function (u) {
           cloudUser = u; cloudReady = false; cloudErr = ''; db = blank(); photos = {};
           lastMain = ''; mainDirty = false; patchQ = {};
-          document.body.classList.toggle('locked', !u); status();
+          document.body.classList.toggle('locked', !u); status(); stopShaders();
           if (u) box('กำลังโหลดข้อมูล', '<p class="muted">' + h(u.email) + '</p>'); else viewLogin();
         },
         main: function (data, pend) {

@@ -79,6 +79,38 @@ a { color: var(--green); }
 main { padding: 1.5rem 1.25rem 3rem; max-width: 1280px; margin: 0 auto; }
 .foot { text-align: center; color: var(--muted); font-size: .9rem; padding: 0 1rem 2rem; }
 
+/* ---------- หน้าแรก: การ์ดพื้นหลังเชเดอร์ ---------- */
+.home > header { text-align: center; margin: 2.5rem 0 2.5rem; }
+.home > header h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 500; }
+.home > header p { margin: .6rem auto 0; color: var(--muted); font-size: 1.2rem; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+.card { position: relative; display: block; height: 20rem; border-radius: 1.5rem; overflow: hidden; color: #fff; text-decoration: none; isolation: isolate; }
+.card .warp { position: absolute; inset: 0; z-index: -1; }
+.card .warp canvas { display: block; width: 100%; height: 100%; }
+.warp-scores { background: linear-gradient(135deg, hsl(120 100% 25%), hsl(140 100% 60%)); }
+.warp-students { background: linear-gradient(135deg, hsl(200 100% 25%), hsl(180 100% 65%)); }
+.warp-add { background: linear-gradient(135deg, hsl(30 100% 35%), hsl(50 100% 65%)); }
+.card-body {
+  height: 100%; display: flex; flex-direction: column; padding: 2rem;
+  background: rgba(0, 0, 0, .8); border: 1px solid rgba(255, 255, 255, .2); border-radius: 1.5rem;
+  transition: background-color .2s;
+}
+.card:hover .card-body, .card:focus-visible .card-body { background: rgba(0, 0, 0, .68); }
+.card-icon { flex: none; width: 3rem; height: 3rem; margin-bottom: 1.5rem; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .4)); }
+.card h2 { font-size: 1.5rem; font-weight: 700; margin: 0 0 1rem; }
+.card p { flex: 1; margin: 0; color: #f3f4f6; font-weight: 500; line-height: 1.65; max-width: none; }
+.card-go { display: flex; align-items: center; gap: .5rem; margin-top: 1.5rem; font-family: var(--ui); font-size: .95rem; font-weight: 700; color: #e5e7eb; }
+.card-go svg { width: 1rem; height: 1rem; }
+@media (max-width: 1000px) { .cards { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px) {
+  .cards { grid-template-columns: 1fr; gap: 1.25rem; }
+  .card { height: auto; min-height: 15rem; }
+  .card-body { padding: 1.5rem; min-height: 15rem; }
+  .card-icon { width: 2.5rem; height: 2.5rem; margin-bottom: 1rem; }
+  .card h2 { margin-bottom: .6rem; }
+  .home > header { margin: 1.25rem 0 1.5rem; }
+}
+
 /* ---------- ปุ่มและฟอร์ม ---------- */
 button, .btn {
   font-size: .95rem; font-weight: 600; cursor: pointer;
@@ -233,7 +265,8 @@ body.locked .mainnav, body.locked .search { visibility: hidden; }
   body { font-size: 16px; }
   .cover { gap: .6rem 1rem; padding: .6rem .9rem; }
   .mainnav { order: 3; flex-basis: 100%; }
-  .mainnav a { padding: .35rem .6rem; }
+  .mainnav { overflow-x: auto; }
+  .mainnav a { padding: .35rem .55rem; white-space: nowrap; font-size: .95rem; }
   .search { flex: 1; width: auto; }
   main { padding: 1rem .75rem 2.5rem; }
   .grid .c-code { display: none; }
